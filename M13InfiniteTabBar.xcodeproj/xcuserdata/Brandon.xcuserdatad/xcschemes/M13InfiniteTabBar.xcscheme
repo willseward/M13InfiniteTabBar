@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
-   LastUpgradeVersion = "0460"
+   LastUpgradeVersion = "0600"
    version = "1.3">
    <BuildAction
       parallelizeBuildables = "YES"
@@ -14,9 +14,23 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "CAB8453516CC8AEE0051B3A9"
+               BlueprintIdentifier = "CA6CFE3F19AE946400E562F2"
                BuildableName = "M13InfiniteTabBar.app"
                BlueprintName = "M13InfiniteTabBar"
+               ReferencedContainer = "container:M13InfiniteTabBar.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "CA6CFE5119AE946400E562F2"
+               BuildableName = "M13InfiniteTabBarTests.xctest"
+               BlueprintName = "M13InfiniteTabBarTests"
                ReferencedContainer = "container:M13InfiniteTabBar.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -28,11 +42,21 @@
       shouldUseLaunchSchemeArgsEnv = "YES"
       buildConfiguration = "Debug">
       <Testables>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "CA6CFE5119AE946400E562F2"
+               BuildableName = "M13InfiniteTabBarTests.xctest"
+               BlueprintName = "M13InfiniteTabBarTests"
+               ReferencedContainer = "container:M13InfiniteTabBar.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "CAB8453516CC8AEE0051B3A9"
+            BlueprintIdentifier = "CA6CFE3F19AE946400E562F2"
             BuildableName = "M13InfiniteTabBar.app"
             BlueprintName = "M13InfiniteTabBar"
             ReferencedContainer = "container:M13InfiniteTabBar.xcodeproj">
@@ -51,7 +75,7 @@
       <BuildableProductRunnable>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "CAB8453516CC8AEE0051B3A9"
+            BlueprintIdentifier = "CA6CFE3F19AE946400E562F2"
             BuildableName = "M13InfiniteTabBar.app"
             BlueprintName = "M13InfiniteTabBar"
             ReferencedContainer = "container:M13InfiniteTabBar.xcodeproj">
@@ -69,7 +93,7 @@
       <BuildableProductRunnable>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "CAB8453516CC8AEE0051B3A9"
+            BlueprintIdentifier = "CA6CFE3F19AE946400E562F2"
             BuildableName = "M13InfiniteTabBar.app"
             BlueprintName = "M13InfiniteTabBar"
             ReferencedContainer = "container:M13InfiniteTabBar.xcodeproj">
