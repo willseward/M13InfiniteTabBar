@@ -52,10 +52,15 @@ protocol M13InfiniteTabBarSelectionDelegate {
     func infiniteTabBar(tabBar:M13InfiniteTabBar!, didSelectItem item: M13InfiniteTabBarItem!)
 }
 
-enum M13InfiniteTabBarLayout {
+internal enum M13InfiniteTabBarLayout {
     case Infinite
     case Scrolling
     case Static
+}
+
+enum M13InfiniteTabBarSelectionIndicatorLocation {
+    case Top
+    case Bottom
 }
 
 /**The tab bar. Works like `UITabBar`, but way cooler.*/
@@ -113,6 +118,7 @@ class M13InfiniteTabBar: UIView, UIScrollViewDelegate, UIGestureRecognizerDelega
         tabScrollView.showsHorizontalScrollIndicator = false
         tabScrollView.showsVerticalScrollIndicator = false
         tabScrollView.userInteractionEnabled = true
+        tabScrollView.delegate = self
         self.addSubview(tabScrollView)
         
         //Setup content view
@@ -169,16 +175,11 @@ class M13InfiniteTabBar: UIView, UIScrollViewDelegate, UIGestureRecognizerDelega
     /**The currently selected item on the tab bar. 
     @note Changing this property’s value provides visual feedback in the user interface, including the running of any associated animations. The selected item displays the tab bar item’s selectedImage image, using the tab bar’s selectedImageTintColor value. To prevent system coloring of an item, provide images using the UIImageRenderingModeAlwaysOriginal rendering mode.*/
     var selectedItem: M13InfiniteTabBarItem! {
-        didSet {
-            for i in 0..<countElements(items) {
-                var item: M13InfiniteTabBarItem = items[i]
-                if item == selectedItem {
-                    if layoutType == M13InfiniteTabBarLayout.Static {
-                        self.selectItem(item)
-                    }
-                    break
-                }
-            }
+        get {
+            return previouslySelectedItem
+        }
+        set(newValue) {
+            self.setSelectedItem(newValue)
         }
     }
     
@@ -348,6 +349,44 @@ class M13InfiniteTabBar: UIView, UIScrollViewDelegate, UIGestureRecognizerDelega
         }
     }
     
+    /**Wether or not to show the selection indicator triangle.*/
+    var showSelectionIndicator: Bool = true
+    
+    /**The location of the selection indicator.*/
+    var selectionIndicatorLocation: M13InfiniteTabBarSelectionIndicatorLocation = M13InfiniteTabBarSelectionIndicatorLocation.Top
+    
+    /**Draws the mask that is the selection indicator triangle.*/
+    private func updateSelectionIndicator() {
+        let maskLayer: CAShapeLayer = CAShapeLayer()
+        var path: CGMutablePathRef = CGPathCreateMutable()
+        let triangleDepth: CGFloat = 5.0
+        
+        //Top Left
+        CGPathMoveToPoint(path, nil, 0, 0)
+        //Draw the triangle on top if necessary
+        if selectionIndicatorLocation == M13InfiniteTabBarSelectionIndicatorLocation.Top {
+            CGPathAddLineToPoint(path, nil, (self.frame.size.width / 2.0) - triangleDepth, 0)
+            CGPathAddLineToPoint(path, nil, (self.frame.size.width / 2.0), triangleDepth)
+            CGPathAddLineToPoint(path, nil, (self.frame.size.width / 2.0) + triangleDepth, 0)
+        }
+        //Top Right
+        CGPathAddLineToPoint(path, nil, self.frame.size.width, 0)
+        //Bottom Right
+        CGPathAddLineToPoint(path, nil, self.frame.size.width, self.frame.size.height)
+        //Draw the triangle on bottom if necessary
+        if selectionIndicatorLocation == M13InfiniteTabBarSelectionIndicatorLocation.Bottom {
+            CGPathAddLineToPoint(path, nil, (self.frame.size.width / 2.0) + triangleDepth, self.frame.size.height)
+            CGPathAddLineToPoint(path, nil, (self.frame.size.width / 2.0), self.frame.size.height - triangleDepth);
+            CGPathAddLineToPoint(path, nil, (self.frame.size.width / 2.0) - triangleDepth, self.frame.size.height);
+        }
+        //Bottom Left
+        CGPathAddLineToPoint(path, nil, 0, self.frame.size.height);
+        //Close
+        CGPathCloseSubpath(path)
+        maskLayer.path = path
+        self.layer.mask = maskLayer
+    }
+    
     //---------------------------------------
     /**@name Subviews*/
     //---------------------------------------
@@ -389,9 +428,8 @@ class M13InfiniteTabBar: UIView, UIScrollViewDelegate, UIGestureRecognizerDelega
     
     /**Called when a single tap is captured on the tab scroll view.*/
     internal func singleTapCaptured(recognizer: UITapGestureRecognizer) {
-        //Calculate the touch location in the tabContainerView coordiates. We have to do this manually, as there seems to be a bug with UIScrollView where the content offset isn't taken into account.
-        var location: CGPoint = recognizer.locationInView(nil)
-        location.x += (tabScrollView.contentOffset.x - tabContainerView.frame.origin.x)
+        //Calculate the touch location in the tabContainerView coordiates.
+        var location: CGPoint = recognizer.locationInView(tabContainerView)
         
         //Have we selected the current item?
         if let item = self.itemAtLocation(location) {
@@ -404,29 +442,51 @@ class M13InfiniteTabBar: UIView, UIScrollViewDelegate, UIGestureRecognizerDelega
         
     }
     
-    /**Handles the animations for setting the selected item.*/
+    /**Handles the scrolling animations for setting the selected item.*/
     private func setSelectedItem(item: M13InfiniteTabBarItem) {
         
-    }
-    
-    /**Handles selection of an item at the given index.*/
-    private func selectItemAtIndex(index: Int) {
-        //Invalid index
-        if index >= countElements(items) || index < 0 {
+        //Stop if we have no items to select
+        if countElements(visibleItems) == 0 {
             return
         }
         
-        //Are we selecting the selected item?
-        if selectedItem.index == index {
-            self.setSelectedItem(self.selectedItem)
+        //Which item do we want to select
+        var selectableItemFrame: CGRect = CGRectZero
+        if layoutType == M13InfiniteTabBarLayout.Static {
+            //Just perform the selection animation
+            self.selectItem(item)
+            return
+        } else if layoutType == M13InfiniteTabBarLayout.Scrolling {
+            //If we are scrolling, we just need the item in the visible items array of the same index
+            for tempItem: M13InfiniteTabBarItem in visibleItems {
+                if tempItem == item {
+                    selectableItemFrame = tempItem.frame
+                    break
+                }
+            }
+        } else {
+            //If we are infinitly scrolling, determine the closest tab to the current selected tab. And base the new item off of that That way we scroll the least amount of distance possible.
+            let distance: Int = self.shortestIndexDistanceBetweenItemsAtIndicies(selectedItem.index, b: item.index)
+            let currentSelectedItemIndex: Int = find(visibleItems, selectedItem)!
+            let toSelectIndex: Int = currentSelectedItemIndex + distance
+            let toSelectItem: M13InfiniteTabBarItem = visibleItems[toSelectIndex]
+            selectableItemFrame = toSelectItem.frame
         }
         
-        //What is the shortest distance between the selected distance and the new index.
-        let indexDistance: Int = shortestDistanceBetweenItemsAtIndicies(selectedItem.index, b: index)
-        //What is the width of an item.
+        //We need to scroll the tab bar so that the new selected tab is centered
+        let scrollLocation: CGPoint = CGPointMake(selectableItemFrame.origin.x + tabContainerView.frame.origin.x - (tabScrollView.frame.size.width / 2.0) + (selectableItemFrame.size.width / 2.0), 0)
+        
+        //If we selected the center item, just reselect.
+        if scrollLocation == tabScrollView.contentOffset {
+            self.scrollViewDidEndScrollingAnimation(tabScrollView)
+            return
+        }
+        
+        
+        tabScrollView.setContentOffset(scrollLocation, animated: true)
     }
     
-    /**Handles all the animation of selecting an item.*/
+    /**Handles the animations of setting an item to selected.*/
     private func selectItem(item: M13InfiniteTabBarItem) {
         //Should we allow the selection?
         var shouldUpdate: Bool = true
@@ -472,7 +532,64 @@ class M13InfiniteTabBar: UIView, UIScrollViewDelegate, UIGestureRecognizerDelega
             
             UIView.commitAnimations()
         } else {
+            var selectedItemFrame: CGRect = CGRectZero
             //If we are a static layout do nothing, no need to bring the old tab back into view.
+            if layoutType == M13InfiniteTabBarLayout.Static {
+                return
+            } else if layoutType == M13InfiniteTabBarLayout.Scrolling {
+                for tempItem: M13InfiniteTabBarItem in visibleItems {
+                    if tempItem == selectedItem {
+                        selectedItemFrame = tempItem.frame
+                        break
+                    }
+                }
+            } else {
+                //If we are infinitly scrolling, determine the closest tab to the current selected tab. And base the new item off of that That way we scroll the least amount of distance possible.
+                let distance: Int = self.shortestIndexDistanceBetweenItemsAtIndicies(item.index, b: selectedItem.index)
+                let currentSelectedItemIndex: Int = find(visibleItems, selectedItem)!
+                let toSelectIndex: Int = currentSelectedItemIndex + distance
+                let toSelectItem: M13InfiniteTabBarItem = visibleItems[toSelectIndex]
+                selectedItem = toSelectItem
+                selectedItemFrame = toSelectItem.frame
+            }
+            
+            //We need to scroll the tab bar so that the old selected tab is centered
+            let scrollLocation: CGPoint = CGPointMake(selectedItemFrame.origin.x + tabContainerView.frame.origin.x, 0)
+            
+            //If we selected the center item, just reselect.
+            if scrollLocation == tabScrollView.contentOffset {
+                self.scrollViewDidEndScrollingAnimation(tabScrollView)
+                return
+            }
+            
+            selectionFailure = true
+            tabScrollView.setContentOffset(scrollLocation, animated: true)
+        }
+    }
+    
+    /**A flag to set on selection failure. It prevents the tab bar from "reselecting" the old tab, when a new selection is denied.*/
+    private var selectionFailure: Bool = false
+    
+    /**Grabs the item that is at the center of the scroll view's bounds and centers it*/
+    private func centerItemAtCenter() {
+        //What is the center point in the tab container frame?
+        var centerLocation: CGPoint = CGPointMake(tabScrollView.frame.size.width / 2.0, tabScrollView.frame.size.height / 2.0)
+        centerLocation.x = centerLocation.x + (tabScrollView.contentOffset.x - tabContainerView.frame.origin.x)
+        
+        if let item: M13InfiniteTabBarItem = self.itemAtLocation(centerLocation) {
+            //Determine the new content offset
+            var contentOffset: CGPoint = CGPointMake(item.frame.origin.x + tabContainerView.frame.origin.x - (tabScrollView.frame.size.width / 2.0) + (item.frame.size.width / 2.0), 0)
+            if contentOffset == tabScrollView.contentOffset && item == selectedItem {
+                //Reselect tab
+            } else if contentOffset == tabScrollView.contentOffset {
+                //We are already aligned, just select the tab that is centered
+                if let item: M13InfiniteTabBarItem = self.itemAtLocation(centerLocation) {
+                    self.selectItem(item)
+                }
+            } else {
+                //We need to align the tab before selection
+                tabScrollView.setContentOffset(contentOffset, animated: true)
+            }
         }
     }
     
@@ -480,6 +597,36 @@ class M13InfiniteTabBar: UIView, UIScrollViewDelegate, UIGestureRecognizerDelega
         //Notify the delegate
         if let delegate = self.selectionDelegate {
             delegate.infiniteTabBar(self, didSelectItem: selectedItem)
+        }
+    }
+    
+    //---------------------------------------
+    /**@name Scroll Delegate*/
+    //---------------------------------------
+    
+    func scrollViewDidEndDragging(scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        if !decelerate {
+            //Center the item that is closest to center
+            self.centerItemAtCenter()
+        }
+    }
+    
+    func scrollViewDidEndDecelerating(scrollView: UIScrollView) {
+        //Center the item that is closest to center
+        self.centerItemAtCenter()
+    }
+    
+    func scrollViewDidEndScrollingAnimation(scrollView: UIScrollView) {
+        if !selectionFailure {
+            //What is the center point in the tab container frame?
+            var centerLocation: CGPoint = CGPointMake(tabScrollView.frame.size.width / 2.0, tabScrollView.frame.size.height / 2.0)
+            centerLocation.x = centerLocation.x + (tabScrollView.contentOffset.x - tabContainerView.frame.origin.x)
+            //Select that item
+            if let item: M13InfiniteTabBarItem = self.itemAtLocation(centerLocation) {
+                self.selectItem(item)
+            }
+        } else {
+            selectionFailure = false
         }
     }
     
@@ -535,7 +682,7 @@ class M13InfiniteTabBar: UIView, UIScrollViewDelegate, UIGestureRecognizerDelega
     }
     
     /**What is the shortest distance between two items in the tab bar? With direction?*/
-    private func shortestDistanceBetweenItemsAtIndicies(a: Int, b: Int) -> Int {
+    private func shortestIndexDistanceBetweenItemsAtIndicies(a: Int, b: Int) -> Int {
         return min(modulo(a - b, m: countElements(items)), modulo(b - a, m: countElements(items)))
     }
     
@@ -577,7 +724,7 @@ class M13InfiniteTabBar: UIView, UIScrollViewDelegate, UIGestureRecognizerDelega
         //Scroll view
         tabScrollView.frame = CGRectMake(self.tabBarItemInsets().left, self.tabBarItemInsets().top, self.bounds.size.width - self.tabBarItemInsets().left - self.tabBarItemInsets().right, self.frame.size.height - self.tabBarItemInsets().top - self.tabBarItemInsets().bottom)
         
-        //Update the tab layout. Default is animated.
+        //Update the tab layout.
         self.updateTabLayout(true)
     }
     
@@ -603,7 +750,24 @@ class M13InfiniteTabBar: UIView, UIScrollViewDelegate, UIGestureRecognizerDelega
             self.layoutTabsForNonInfiniteScrolling(animated)
         } else {
             //Infinite scrolling
+            let changed: Bool = (layoutType != M13InfiniteTabBarLayout.Infinite)
+            //We need to clear the screen before updating.
+            if changed {
+                self.animateChangeToOrFromInfiniteScrolling(true)
+            }
             layoutType = M13InfiniteTabBarLayout.Infinite
+            self.layoutTabsForInfiniteScrolling(animated)
+            if changed {
+                self.animateChangeToOrFromInfiniteScrolling(false)
+            }
+            
+        }
+        
+        //Selection Indicator
+        if showSelectionIndicator && layoutType != M13InfiniteTabBarLayout.Static {
+            self.updateSelectionIndicator()
+        } else {
+            self.layer.mask = nil
         }
     }
     
@@ -612,7 +776,138 @@ class M13InfiniteTabBar: UIView, UIScrollViewDelegate, UIGestureRecognizerDelega
     /**@name Infinite*/
     //---------------------------------------
     
+    private func layoutTabsForInfiniteScrolling(animated: Bool) {
+        //Set the frame of the tab container
+        //Find the proper size of the tab view
+        var calculatedItemWidth: CGFloat = 0.0
+        if itemWidth != 0.0 {
+            calculatedItemWidth = itemWidth
+        } else {
+            calculatedItemWidth = 64.0
+        }
+        tabContainerView.frame = CGRectMake(0.0, 0.0, 4.0 * calculatedItemWidth * CGFloat(countElements(items)), tabScrollView.frame.size.height)
+        tabScrollView.contentSize = tabContainerView.frame.size
+        //Recenter if necessary
+        self.recenterIfNecessary()
+        //Tile content in the visible bounds
+        self.tileItems(fromMinX: tabScrollView.contentOffset.x, toMaxX: tabScrollView.contentOffset.x + tabScrollView.frame.size.width)
+    }
     
+    /**Tiles items in the tab view from the minX to the maxX*/
+    private func tileItems(fromMinX minimumVisibleX: CGFloat, toMaxX maximumVisibleX: CGFloat) {
+        //The tiling logic depends on there being one item in the visible items array. So make sure there is at least one label.
+        if countElements(visibleItems) == 0 {
+            //Create the item that will be inserted
+            let itemToInsert: M13InfiniteTabBarItem = (items[0] as M13InfiniteTabBarItem).copy() as M13InfiniteTabBarItem
+            //Find the proper size of the tab view
+            var calculatedItemWidth: CGFloat = 0.0
+            if itemWidth != 0.0 {
+                calculatedItemWidth = itemWidth
+            } else {
+                calculatedItemWidth = 64.0
+            }
+            //Add to the visible items array
+            visibleItems.append(itemToInsert)
+            //Set the frame of the new item, and add it to the sub view
+            itemToInsert.frame = CGRectMake(minimumVisibleX, 0, calculatedItemWidth, tabScrollView.frame.size.height)
+            tabContainerView.addSubview(itemToInsert)
+        }
+        
+        //Add labels that are missing on the right side
+        let rightMostItem: M13InfiniteTabBarItem = visibleItems.last!
+        var rightEdge: CGFloat = CGRectGetMaxX(rightMostItem.frame)
+        while rightEdge < maximumVisibleX {
+            rightEdge = self.placeNewItemOnRight(rightEdge)
+        }
+        
+        //Add labels that are missing on the left size
+        let leftMostItem: M13InfiniteTabBarItem = visibleItems[0]
+        var leftEdge: CGFloat = CGRectGetMinX(leftMostItem.frame)
+        while leftEdge > minimumVisibleX {
+            leftEdge = self.placeNewItemOnLeft(leftEdge)
+        }
+        
+        //Remove labels that have fallen off the right edge
+        var lastItem: M13InfiniteTabBarItem = visibleItems.last!
+        while CGRectGetMinX(lastItem.frame) > maximumVisibleX {
+            lastItem.removeFromSuperview()
+            visibleItems.removeLast()
+            lastItem = visibleItems.last!
+        }
+        
+        //Remove labels that have fallen off the left edge
+        var firstItem: M13InfiniteTabBarItem = visibleItems[0]
+        while CGRectGetMaxX(firstItem.frame) < minimumVisibleX {
+            firstItem.removeFromSuperview()
+            visibleItems.removeAtIndex(0)
+            firstItem = visibleItems[0]
+        }
+    }
+    
+    /**Places the next item on the right hand of the tab bar. It then returns the max x coordinate of the new item's frame*/
+    private func placeNewItemOnRight(rightEdge: CGFloat) -> CGFloat {
+        //Figure out the next item
+        let rightMostItem: M13InfiniteTabBarItem = visibleItems.last!
+        var indexToInsert: Int = rightMostItem.index + 1
+        //Loop if the index is past the end of visible icons
+        if indexToInsert == countElements(items) {
+            indexToInsert = 0
+        }
+        //Create the item that will be inserted
+        let itemToInsert: M13InfiniteTabBarItem = (items[indexToInsert] as M13InfiniteTabBarItem).copy() as M13InfiniteTabBarItem
+        //Add to the visible items array
+        visibleItems.append(itemToInsert)
+        
+        //Set the frame of the new item, and add it to the sub view
+        itemToInsert.frame = CGRectMake(rightEdge, 0, rightMostItem.frame.size.width, tabScrollView.frame.size.height)
+        tabContainerView.addSubview(itemToInsert)
+        
+        //Return the max X of the frame of the new item.
+        return CGRectGetMaxX(itemToInsert.frame)
+    }
+    
+    /**Places the next item on the left hand of the tab bar. It then returns the min x coordinate of the new item's frame*/
+    private func placeNewItemOnLeft(leftEdge: CGFloat) -> CGFloat {
+        //Figure out the previous item
+        let leftMostItem: M13InfiniteTabBarItem = visibleItems.last!
+        var indexToInsert: Int = leftMostItem.index - 1
+        //Loop if the index is past the beginning of visible icons
+        if indexToInsert == -1 {
+            indexToInsert = countElements(items) - 1
+        }
+        //Create the item that will be inserted
+        let itemToInsert: M13InfiniteTabBarItem = (items[indexToInsert] as M13InfiniteTabBarItem).copy() as M13InfiniteTabBarItem
+        //Add to the visible items array
+        visibleItems.insert(itemToInsert, atIndex: 0)
+        
+        //Set the frame of the new item, and add it to the sub view
+        itemToInsert.frame = CGRectMake(leftEdge - leftMostItem.frame.size.width, 0, leftMostItem.frame.size.width, tabScrollView.frame.size.height)
+        tabContainerView.addSubview(itemToInsert)
+        
+        //Return the min X of the frame of the new item.
+        return CGRectGetMinX(itemToInsert.frame)
+    }
+    
+    func recenterIfNecessary() {
+        let currentOffset: CGPoint = tabScrollView.contentOffset
+        let centerOffsetX: CGFloat = (tabScrollView.contentSize.width - tabScrollView.bounds.size.width) / 2.0
+        let distanceFromCenter: CGFloat = fabs(currentOffset.x - centerOffsetX)
+        
+        if distanceFromCenter > tabScrollView.contentSize.width / 4.0 {
+            tabScrollView.contentOffset = CGPointMake(centerOffsetX, 0)
+            
+            //Move the tabs by the same amount so that there is no jump in motion.
+            for item: M13InfiniteTabBarItem in visibleItems {
+                var center: CGPoint = item.center
+                center.x += (centerOffsetX - currentOffset.x)
+                item.center = center
+            }
+        }
+    }
+    
+    func animateChangeToOrFromInfiniteScrolling(hide: Bool) {
+        
+    }
     
     //---------------------------------------
     /**@name Non-Infinite*/
@@ -620,6 +915,99 @@ class M13InfiniteTabBar: UIView, UIScrollViewDelegate, UIGestureRecognizerDelega
     
     private func layoutTabsForNonInfiniteScrolling(animated: Bool) {
         
+        //Enable Scrolling
+        tabScrollView.scrollEnabled = true
+        
+        if itemsChangedSinceLastLayout {
+            if animated {
+                //We are infinite, and need to redo all the items
+                UIView.animateWithDuration(0.15, animations: { () -> Void in
+                    //First hide all the currently visible items
+                    self.tabContainerView.alpha = 0.0
+                    }, completion: { (completed) -> Void in
+                        if completed {
+                            //Then remove all the items from the superview
+                            for item: M13InfiniteTabBarItem in self.visibleItems {
+                                item.removeFromSuperview()
+                            }
+                            //Add each item to the container view
+                            var newVisibleItems: [M13InfiniteTabBarItem] = []
+                            for item in self.items {
+                                var newItem: M13InfiniteTabBarItem = item.copy() as M13InfiniteTabBarItem
+                                newVisibleItems.append(newItem)
+                                self.tabContainerView.addSubview(newItem)
+                            }
+                            self.visibleItems = newVisibleItems
+                            //Layout each item
+                            self.layoutTabsForNonInfiniteScrollingLayoutHelper()
+                            //Show each item
+                            UIView.animateWithDuration(0.15, animations: { () -> Void in
+                                self.tabContainerView.alpha = 1.0
+                                }, completion: { (completed) -> Void in
+                                    //All done
+                            })
+                        }
+                        
+                })
+            } else {
+                //Hide everything.
+                self.tabContainerView.alpha = 1.0
+                //Then remove all the items from the superview
+                for item: M13InfiniteTabBarItem in self.visibleItems {
+                    item.removeFromSuperview()
+                }
+                //Add each item to the container view
+                var newVisibleItems: [M13InfiniteTabBarItem] = []
+                for item in self.items {
+                    var newItem: M13InfiniteTabBarItem = item.copy() as M13InfiniteTabBarItem
+                    newVisibleItems.append(newItem)
+                    self.tabContainerView.addSubview(newItem)
+                }
+                self.visibleItems = newVisibleItems
+                //Layout each item
+                self.layoutTabsForNonInfiniteScrollingLayoutHelper()
+                //Show everything
+                self.tabContainerView.alpha = 1.0
+            }
+            //We reset all the tabs
+            itemsChangedSinceLastLayout = false
+        } else {
+            //We just need to move the tabs around.
+            if animated {
+                UIView.animateWithDuration(0.15, animations: { () -> Void in
+                    self.layoutTabsForNonInfiniteScrollingLayoutHelper()
+                    }, completion: { (completed) -> Void in
+                        //Do nothing
+                })
+            } else {
+                self.layoutTabsForNonInfiniteScrollingLayoutHelper()
+            }
+        }
+    }
+    
+    private func layoutTabsForNonInfiniteScrollingLayoutHelper() {
+        //Find the proper size of the tab view
+        var calculatedItemWidth: CGFloat = 0.0
+        if itemWidth != 0.0 {
+            calculatedItemWidth = itemWidth
+        } else {
+            calculatedItemWidth = 64.0
+        }
+        
+        //Layout the content size and container view. (We need a border on each side of the tab container of 1/2 of the scroll view, minus 1/2 the width of a tab, so that the selection indicator lines up with the center of the tab.
+        tabScrollView.contentSize = CGSizeMake(tabScrollView.frame.size.width + ((CGFloat(countElements(items)) - 1.0) * calculatedItemWidth), tabScrollView.frame.size.height)
+        tabContainerView.frame = CGRectMake((tabScrollView.frame.size.width / 2.0) - (calculatedItemWidth / 2.0), 0, CGFloat(countElements(items)) * calculatedItemWidth, tabScrollView.frame.size.height)
+        
+        //Layout the tabs
+        var xPos: CGFloat = 0.0
+        for item: M13InfiniteTabBarItem in visibleItems {
+            item.frame = CGRectMake(xPos, 0, calculatedItemWidth, tabContainerView.frame.size.height)
+            xPos += calculatedItemWidth
+        }
+        
+        //Set the content offset to have the proper tab selected.
+        let selectedCenter: CGPoint = visibleItems[selectedItem.index].center
+        tabScrollView.contentOffset = CGPointMake(selectedCenter.x - (tabScrollView.frame.size.width / 2.0) + tabContainerView.frame.origin.x, 0)
     }
     
     private func layoutTabsStatically(animated: Bool) {

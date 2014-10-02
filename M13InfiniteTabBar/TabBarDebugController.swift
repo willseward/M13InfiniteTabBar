@@ -23,6 +23,14 @@ class TabBarDebugController: UIViewController {
         basicTabBar.frame = CGRectMake(0.0, 80.0, self.view.bounds.size.width, 48.0)
         self.view.addSubview(basicTabBar)
         
+        //Add tab bar constraints.
+        basicTabBar.setTranslatesAutoresizingMaskIntoConstraints(false)
+        var constraintsH: [AnyObject] = NSLayoutConstraint.constraintsWithVisualFormat("H:|[tabView]|", options: NSLayoutFormatOptions.AlignAllBaseline, metrics: nil, views: ["tabView": basicTabBar, "superview": self.view])
+        var constraintsV: [AnyObject] = NSLayoutConstraint.constraintsWithVisualFormat("V:|-80.0-[tabView(48.0)]", options: NSLayoutFormatOptions.AlignAllLeft, metrics: nil, views: ["tabView": basicTabBar, "superview": self.view])
+        
+        self.view.addConstraints(constraintsH)
+        self.view.addConstraints(constraintsV)
+        
         //Set tabs
         var items: [M13InfiniteTabBarItem] = []
         items.append(M13InfiniteTabBarItem(title: "Bookmarks", image: UIImage(named: "Bookmarks.png"), selectedImage: UIImage(named: "BookmarksSelected.png")))
@@ -74,6 +82,17 @@ class TabBarDebugController: UIViewController {
         items.append(M13InfiniteTabBarItem(title: "Most Viewed", image: UIImage(named: "MostViewed.png"), selectedImage: UIImage(named: "MostViewedSelected.png")))
         
         if sender.selectedSegmentIndex == 2 {
+            basicTabBar.infiniteScrollingEnabled = false;
+            if animatedSwitch!.on {
+                basicTabBar.setItems(items, animated: true)
+            } else {
+                basicTabBar.setItems(items, animated: false)
+            }
+            return
+        }
+        
+        if sender.selectedSegmentIndex == 3 {
+            basicTabBar.infiniteScrollingEnabled = true;
             if animatedSwitch!.on {
                 basicTabBar.setItems(items, animated: true)
             } else {

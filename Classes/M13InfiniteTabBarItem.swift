@@ -50,6 +50,7 @@ class M13InfiniteTabBarItem: UIView, Equatable {
         newItem.selected = selected
         newItem.requiresUserAttention = requiresUserAttention
         newItem.containerView.transform = containerView.transform
+        newItem.index = index
         return newItem
     }
 
